@@ -2,11 +2,15 @@ use crate::graphql::{GraphqlSchema};
 use std::collections::HashMap;
 use actix_web::{HttpRequest, HttpResponse, web, Result, get, post};
 use actix_web::guard::{GuardContext};
+use actix_web::http::header;
+use actix_web::http::header::HeaderMap;
 use actix_web::web::Query;
 use async_graphql::{Schema, http::{GraphQLPlaygroundConfig, playground_source}};
 
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
 
+#[derive(Debug)]
+pub struct AuthToken(pub String);
 
 // Guard to separate /graphql requests from /graphql?query= requests
 fn query_guard(req: &GuardContext) -> bool {
@@ -36,12 +40,32 @@ pub async fn graphql_subscription(
   GraphQLSubscription::new(Schema::clone(&*schema)).start(&req, payload)
 }
 
+fn get_auth_from_headers(headers: &HeaderMap) -> Option<AuthToken> {
+  headers
+    .get(header::AUTHORIZATION)
+    .and_then(|value| value.to_str().map(|s| AuthToken(s.to_string())).ok())
+}
+
 #[post("/graphql")]
-pub async fn graphql_request(schema: web::Data<GraphqlSchema>, req: GraphQLRequest) -> GraphQLResponse {
-  schema.execute(req.into_inner()).await.into()
+pub async fn graphql_request(schema: web::Data<GraphqlSchema>, req: HttpRequest, gql_request: GraphQLRequest) -> GraphQLResponse {
+  let mut request = gql_request.into_inner();
+  if let Some(auth_token) = get_auth_from_headers(req.headers()) {
+    request = request.data(auth_token);
+  }
+  schema.execute(request).await.into()
 }
 
 #[get("/graphql", guard = "query_guard")]
-pub async fn graphql_query(schema: web::Data<GraphqlSchema>, req: GraphQLRequest) -> GraphQLResponse {
-  schema.execute(req.into_inner()).await.into()
+pub async fn graphql_query(schema: web::Data<GraphqlSchema>, req: HttpRequest, gql_request: GraphQLRequest) -> GraphQLResponse {
+  let mut request = gql_request.into_inner();
+
+  if let Some(query) = req.head().uri.query() {
+    let query = Query::<HashMap<String, String>>::from_query(query).unwrap();
+    if query.contains_key("authorization") {
+      let auth = query.get("authorization").unwrap();
+      request = request.data(AuthToken(auth.clone()))
+    }
+  }
+
+  schema.execute(request).await.into()
 }

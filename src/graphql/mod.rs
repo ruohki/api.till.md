@@ -1,4 +1,5 @@
 pub mod links;
+pub mod channel;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -10,14 +11,17 @@ use async_graphql::{Subscription, Object};
 use fred::clients::RedisClient;
 use fred::interfaces::ClientLike;
 use fred::prelude::{ReconnectPolicy, RedisConfig};
+use crate::AuthToken;
+use crate::graphql::channel::ChannelMutations;
 
 use crate::graphql::links::{LinkMutations, LinkQueries, LinkSubscriptions};
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct QueryRoot;
 
 #[derive(Default)]
 pub struct MutationRoot;
+
 #[derive(Default)]
 pub struct SubscriptionRoot;
 
@@ -25,13 +29,13 @@ pub struct SubscriptionRoot;
 pub struct Queries(QueryRoot, LinkQueries);
 
 #[derive(MergedObject, Default)]
-pub struct Mutations(MutationRoot, LinkMutations);
+pub struct Mutations(MutationRoot, LinkMutations, ChannelMutations);
 
-/*#[derive(MergedObject, Default)]
-pub struct Subscriptions(SubscriptionRoot, LinkSubscriptions);*/
+#[derive(MergedSubscription, Default)]
+pub struct Subscriptions(SubscriptionRoot, LinkSubscriptions);
 
 
-pub type GraphqlSchema = Schema<Queries, Mutations, LinkSubscriptions>;
+pub type GraphqlSchema = Schema<Queries, Mutations, Subscriptions>;
 
 
 #[Subscription]
@@ -52,6 +56,13 @@ impl SubscriptionRoot {
 impl QueryRoot {
   async fn links(&self) -> LinkQueries {
     LinkQueries::default()
+  }
+  async fn test(&self, _ctx: &Context<'_>) -> String {
+    if let Some(auth) = _ctx.data_opt::<AuthToken>() {
+      return "Hallo, Auth".to_string();
+    }
+
+    "Hallo".to_string()
   }
 }
 
@@ -89,7 +100,7 @@ pub async fn build_schema() -> GraphqlSchema {
   let _ = subscribe_client.wait_for_connect().await;
 
 
-  Schema::build(Queries::default(), Mutations::default(), LinkSubscriptions)
+  Schema::build(Queries::default(), Mutations::default(), Subscriptions::default())
     .data(mongo_database)
     .data(redis_client)
     .data(PubSub { publish_client, subscribe_client })
