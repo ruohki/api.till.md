@@ -1,6 +1,5 @@
 use std::sync::{Arc, Mutex};
-use rocket::serde::json::Json;
-use rocket::State;
+use actix_web::{Responder, web, Result, get};
 use serde::Serialize;
 use sysinfo::{ProcessorExt, RefreshKind, System, SystemExt};
 
@@ -13,21 +12,22 @@ pub struct Health {
   pub memory_used: u64,
 }
 
+#[derive(Clone)]
 pub struct Systeminfo(pub Arc<Mutex<System>>);
 
-
 #[get("/health")]
-pub fn health(sysinfo_state: &State<Systeminfo>) -> Json<Health> {
-  let mut sys = sysinfo_state.inner().0.lock().unwrap();
+pub async fn health(sysinfo_state: web::Data<Systeminfo>) -> Result<impl Responder> {
+  let mut sys = sysinfo_state.0.lock().unwrap();
+
   sys.refresh_specifics(RefreshKind::new().with_memory().with_cpu());
 
   let cpu_usage = sys.processors().into_iter().map(|p| p.cpu_usage()).collect::<Vec<f32>>();
 
-  Json(Health {
+  Ok(web::Json(Health {
     memory:  sys.total_memory(),
     memory_used: sys.used_memory(),
     memory_free: sys.free_memory(),
     uptime: sys.uptime(),
     cpu_usage,
-  })
+  }))
 }
