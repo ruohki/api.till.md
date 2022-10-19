@@ -12,6 +12,7 @@ use mongodb::options::{ClientOptions, ResolverConfig};
 use sysinfo::{RefreshKind, SystemExt};
 use crate::graphql::build_schema;
 use routes::{health::*, gql::*};
+use crate::graphql::roles::Role;
 
 
 #[actix_web::main]
@@ -31,6 +32,8 @@ async fn main() -> std::io::Result<()> {
 
   println!("Playground IDE: http://localhost:8000");
 
+  let a = Role::Admin > Role::User;
+  println!("{}", a);
   HttpServer::new(move || {
     App::new()
       .app_data(Data::new(schema.clone()))

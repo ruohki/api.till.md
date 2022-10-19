@@ -35,7 +35,7 @@ impl From<UserEntity> for User {
       name: e.name,
       email_address: e.email_address,
       email_verified: e.email_verified,
-      roles: e.roles,
+      roles: e.roles.into_iter().map(|r| String::from(r.as_str())).collect::<Vec<String>>(),
       last_login: e.last_login.timestamp_millis(),
       when_created: e.when_created.timestamp_millis()
     }

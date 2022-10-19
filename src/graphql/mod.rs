@@ -2,6 +2,8 @@ pub mod links;
 pub mod channel;
 pub mod user;
 pub mod admin;
+pub mod guards;
+pub mod roles;
 
 use std::convert::From;
 
@@ -20,6 +22,9 @@ use crate::graphql::channel::ChannelMutations;
 use crate::graphql::links::{LinkMutations, LinkQueries, LinkSubscriptions};
 use crate::graphql::user::UserMutations;
 use crate::models::user::UserEntity;
+
+use guards::RoleGuard;
+use roles::Role;
 
 pub trait FromOid {
   fn from_object_id(_: ObjectId) -> Self;
@@ -70,12 +75,10 @@ impl QueryRoot {
   async fn links(&self) -> LinkQueries {
     LinkQueries::default()
   }
-  async fn test(&self, _ctx: &Context<'_>) -> String {
-    if let Some(_) = _ctx.data_opt::<UserEntity>() {
-      return "Hallo, Auth".to_string();
-    }
 
-    "Hallo".to_string()
+  #[graphql(guard = "RoleGuard::new(Role::Admin)")]
+  async fn test(&self, _ctx: &Context<'_>) -> String {
+    "Iam guarded!".to_string()
   }
 }
 
@@ -113,8 +116,11 @@ pub async fn build_schema() -> GraphqlSchema {
   let _ = subscribe_client.wait_for_connect().await;
 
 
+  let user_collection = mongo_database.collection::<UserEntity>("users");
+
   Schema::build(Queries::default(), Mutations::default(), Subscriptions::default())
     .data(mongo_database)
+    .data(user_collection)
     .data(redis_client)
     .data(PubSub { publish_client, subscribe_client })
     .finish()

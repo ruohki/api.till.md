@@ -3,6 +3,7 @@ use mongodb::bson::DateTime;
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use crate::password::hash_password;
+use crate::Role;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccessTokenEntity {
@@ -28,8 +29,9 @@ pub struct UserEntity {
   pub email_address: String,
   pub email_verified: bool,
 
-  pub roles: Vec<String>,
+  pub roles: Vec<Role>,
 
+  #[serde(default)]
   pub password_hash: String,
 
   pub access_token: Vec<AccessTokenEntity>,
