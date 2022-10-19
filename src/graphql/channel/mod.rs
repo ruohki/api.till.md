@@ -1,11 +1,8 @@
-use async_graphql::{ID, Object, Subscription, Context, Result, Error, Guard};
-use async_graphql::futures_util::Stream;
+use async_graphql::{Object, Context, Result, Error, Guard};
 use mongodb::Database;
 use crate::graphql::channel::inputs::CreateChannelInput;
 use crate::graphql::channel::objects::Channel;
-use crate::graphql::PubSub;
 use crate::models::channel::ChannelEntity;
-use crate::models::links::LinkModel;
 
 pub mod inputs;
 pub mod objects;

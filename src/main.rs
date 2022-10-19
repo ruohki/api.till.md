@@ -3,9 +3,12 @@
 mod routes;
 mod graphql;
 mod models;
+mod password;
 
 use actix_web::{guard, web, web::Data, App, HttpServer};
 use std::sync::{Arc, Mutex};
+use mongodb::Client;
+use mongodb::options::{ClientOptions, ResolverConfig};
 use sysinfo::{RefreshKind, SystemExt};
 use crate::graphql::build_schema;
 use routes::{health::*, gql::*};
@@ -13,7 +16,10 @@ use routes::{health::*, gql::*};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-
+  let options = ClientOptions::parse_with_resolver_config("mongodb://localhost:27017/rust", ResolverConfig::cloudflare())
+    .await.unwrap();
+  let mongo_client = Client::with_options(options).unwrap();
+  let mongo_database = mongo_client.default_database().unwrap();
 
   // Initial system_info snapshot for state
   let sys = Systeminfo(
@@ -22,12 +28,14 @@ async fn main() -> std::io::Result<()> {
 
   let schema = build_schema().await;
 
+
   println!("Playground IDE: http://localhost:8000");
 
   HttpServer::new(move || {
     App::new()
       .app_data(Data::new(schema.clone()))
       .app_data(Data::new(sys.clone()))
+      .app_data(Data::new(mongo_database.clone()))
       // Get/Post to /graphql (Get guarded with custom guard to look for ?query=
       .service(graphql_request)
       .service(graphql_query)

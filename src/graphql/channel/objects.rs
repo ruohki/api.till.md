@@ -1,8 +1,6 @@
 use async_graphql::{ID, SimpleObject};
 use serde::{Deserialize, Serialize};
-use crate::graphql::links::Link;
 use crate::models::channel::ChannelEntity;
-use crate::models::links::LinkModel;
 
 #[derive(Default, Clone, SimpleObject, Deserialize, Serialize)]
 pub struct Channel {

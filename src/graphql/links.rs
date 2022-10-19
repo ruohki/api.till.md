@@ -1,12 +1,7 @@
-use std::borrow::BorrowMut;
-use std::ops::Deref;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use crate::models::links::LinkModel;
 use crate::graphql::PubSub;
 
-
-use async_graphql::{Context, ID, Object, InputObject, SimpleObject, Subscription, async_stream};
+use async_graphql::{Context, ID, Object, InputObject, SimpleObject, Subscription};
 use async_graphql::async_stream::stream;
 use async_graphql::futures_util::{Stream, StreamExt, TryStreamExt};
 use fred::interfaces::PubsubInterface;
@@ -70,7 +65,7 @@ impl LinkQueries {
 impl LinkMutations {
   pub async fn insert_link(&self, _ctx: &Context<'_>, args: CreateLinkInput) -> Link {
     let db = _ctx.data::<Database>().unwrap();
-    let mut pubsub = _ctx.data::<PubSub>().unwrap();
+    let pubsub = _ctx.data::<PubSub>().unwrap();
 
     let link = LinkModel::new(args.url, args.label);
 
@@ -91,7 +86,7 @@ impl LinkSubscriptions {
     pubsub.subscribe_client.subscribe("link_channel".to_string()).await.unwrap();
     let mut message_stream = pubsub.subscribe_client.on_message();
     stream! {
-      while let Some((channel, message)) = message_stream.next().await {
+      while let Some((_channel, message)) = message_stream.next().await {
         if let RedisValue::String(str) = message {
           let link = serde_json::from_str::<Link>(&str).unwrap();
           yield link;

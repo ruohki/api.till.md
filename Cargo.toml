@@ -28,6 +28,11 @@ tokio-stream = "0.1.11"
 futures-timer = "3.0.2"
 async-trait = "0.1.57"
 
+# Crypto
+dryoc = { version = "0.4.0", features = ["base64"] }
+uuid = "1.2.1"
+base64 = "0.20.0-alpha.1"
+
 # Misc
 sysinfo = "0.23.8"
 serde = { version = "1.0.136", features = ["derive"] }

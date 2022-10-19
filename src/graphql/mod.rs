@@ -1,7 +1,10 @@
 pub mod links;
 pub mod channel;
+pub mod user;
+pub mod admin;
 
-use std::sync::{Arc, Mutex};
+use std::convert::From;
+
 use std::time::Duration;
 use async_graphql::*;
 use futures_util::stream::Stream;
@@ -11,10 +14,22 @@ use async_graphql::{Subscription, Object};
 use fred::clients::RedisClient;
 use fred::interfaces::ClientLike;
 use fred::prelude::{ReconnectPolicy, RedisConfig};
-use crate::AuthToken;
+use mongodb::bson::oid::ObjectId;
+use crate::graphql::admin::AdminMutations;
 use crate::graphql::channel::ChannelMutations;
-
 use crate::graphql::links::{LinkMutations, LinkQueries, LinkSubscriptions};
+use crate::graphql::user::UserMutations;
+use crate::models::user::UserEntity;
+
+pub trait FromOid {
+  fn from_object_id(_: ObjectId) -> Self;
+}
+
+impl FromOid for ID {
+  fn from_object_id(oid: ObjectId) -> Self {
+    ID::from(oid.to_hex())
+  }
+}
 
 #[derive(Default, Debug)]
 pub struct QueryRoot;
@@ -29,14 +44,12 @@ pub struct SubscriptionRoot;
 pub struct Queries(QueryRoot, LinkQueries);
 
 #[derive(MergedObject, Default)]
-pub struct Mutations(MutationRoot, LinkMutations, ChannelMutations);
+pub struct Mutations(MutationRoot, AdminMutations, LinkMutations, ChannelMutations, UserMutations);
 
 #[derive(MergedSubscription, Default)]
 pub struct Subscriptions(SubscriptionRoot, LinkSubscriptions);
 
-
 pub type GraphqlSchema = Schema<Queries, Mutations, Subscriptions>;
-
 
 #[Subscription]
 impl SubscriptionRoot {
@@ -58,7 +71,7 @@ impl QueryRoot {
     LinkQueries::default()
   }
   async fn test(&self, _ctx: &Context<'_>) -> String {
-    if let Some(auth) = _ctx.data_opt::<AuthToken>() {
+    if let Some(_) = _ctx.data_opt::<UserEntity>() {
       return "Hallo, Auth".to_string();
     }
 
@@ -91,11 +104,11 @@ pub async fn build_schema() -> GraphqlSchema {
 
   let config = RedisConfig::default();
   let policy = ReconnectPolicy::default();
-  let mut publish_client = RedisClient::new(config.clone());
+  let publish_client = RedisClient::new(config.clone());
   let _ = publish_client.connect(Some(policy.clone()));
   let _ = publish_client.wait_for_connect().await;
 
-  let mut subscribe_client = RedisClient::new(config.clone());
+  let subscribe_client = RedisClient::new(config.clone());
   let _ = subscribe_client.connect(Some(policy.clone()));
   let _ = subscribe_client.wait_for_connect().await;
 
