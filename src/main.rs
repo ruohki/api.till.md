@@ -39,7 +39,6 @@ async fn main() -> std::io::Result<()> {
 
     println!("Playground IDE: http://localhost:8000");
 
-    println!("{}", a);
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(schema.clone()))
