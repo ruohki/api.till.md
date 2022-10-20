@@ -11,7 +11,6 @@ pub struct ChannelEntity {
   pub name: String,
   pub description: String,
   pub public: bool,
-
   pub when_created: DateTime,
   pub last_publish: DateTime,
   pub last_subscribe: DateTime,

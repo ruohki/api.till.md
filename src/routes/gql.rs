@@ -1,11 +1,13 @@
 use crate::graphql::{GraphqlSchema};
+use serde::{Deserialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use actix_web::{HttpRequest, HttpResponse, web, Result, get, post};
 use actix_web::guard::{GuardContext};
 use actix_web::http::header;
 use actix_web::http::header::HeaderMap;
 use actix_web::web::Query;
-use async_graphql::{Schema, http::{GraphQLPlaygroundConfig, playground_source}};
+use async_graphql::{Schema, http::{GraphQLPlaygroundConfig, playground_source}, Data};
 
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
 use chrono::Utc;
@@ -27,6 +29,15 @@ fn query_guard(req: &GuardContext) -> bool {
   false
 }
 
+async fn get_user_from_token(db: Arc<Database>, auth_token: String) -> Option<UserEntity> {
+  let user_collection = db.collection::<UserEntity>("users");
+  let options = FindOneOptions::builder().projection(doc! { "password_hash": 0 }).build();
+  if let Ok(Some(entity)) = user_collection.find_one(doc! { "access_token.token": auth_token, "access_token.expire": { "$gte": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis()) } }, options).await {
+    return Some(entity);
+  }
+  None
+}
+
 #[get("/graphql")]
 pub async fn graphql_playground() -> Result<HttpResponse> {
   let playground = GraphQLPlaygroundConfig::new("/graphql")
@@ -37,24 +48,34 @@ pub async fn graphql_playground() -> Result<HttpResponse> {
     .body(playground_source(playground)))
 }
 
+pub async fn on_connection_init(value: serde_json::Value, db: Arc<Database> ) -> async_graphql::Result<Data> {
+  #[derive(Debug, Deserialize)]
+  struct Payload {
+    authorization: String,
+  }
+
+  if let Ok(payload) = serde_json::from_value::<Payload>(value) {
+    if let Some(user) = get_user_from_token(db.clone(), payload.authorization).await {
+      db.collection::<UserEntity>("users").update_one(doc! { "_id": user.id.unwrap() }, doc! { "$set": { "last_access": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis() )}}, None).await.expect("Error updating timestamp");
+      let mut data = Data::default();
+      data.insert(user);
+      return Ok(data) ;
+    }
+  }
+
+  Ok(Data::default())
+}
 
 pub async fn graphql_subscription(
   schema: web::Data<GraphqlSchema>,
-  db: web::Data<Database>, req: HttpRequest, gql_request: GraphQLRequest
+  req: HttpRequest,
   payload: web::Payload,
+  db: web::Data<Database>
 ) -> Result<HttpResponse> {
-  let mut request = gql_request.into_inner();
-  if let Some(auth_token) = get_auth_from_headers(req.headers()) {
-    //TODO: Make the user beeing cached in redis
-    let db = db.into_inner();
-    let options = FindOneOptions::builder().projection(doc! { "password_hash": 0 }).build();
-    let user_collection = db.collection::<UserEntity>("users");
-    if let Ok(Some(entity)) = user_collection.find_one(doc! { "access_token.token": auth_token, "access_token.expire": { "$gte": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis()) } }, options).await {
-      user_collection.update_one(doc! { "_id": entity.id.unwrap() }, doc! { "$set": { "last_access": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis() )}}, None).await.expect("Error updating timestamp");
-      request = request.data(entity);
-    }
-  }
-  GraphQLSubscription::new(Schema::clone(&*schema)).start(request, payload)
+  let db = db.into_inner();
+  GraphQLSubscription::new(Schema::clone(&*schema))
+    .on_connection_init(|value| on_connection_init(value, db))
+    .start(&req, payload)
 }
 
 fn get_auth_from_headers(headers: &HeaderMap) -> Option<String> {
@@ -69,10 +90,8 @@ pub async fn graphql_request(schema: web::Data<GraphqlSchema>, db: web::Data<Dat
   if let Some(auth_token) = get_auth_from_headers(req.headers()) {
     //TODO: Make the user beeing cached in redis
     let db = db.into_inner();
-    let options = FindOneOptions::builder().projection(doc! { "password_hash": 0 }).build();
-    let user_collection = db.collection::<UserEntity>("users");
-    if let Ok(Some(entity)) = user_collection.find_one(doc! { "access_token.token": auth_token, "access_token.expire": { "$gte": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis()) } }, options).await {
-      user_collection.update_one(doc! { "_id": entity.id.unwrap() }, doc! { "$set": { "last_access": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis() )}}, None).await.expect("Error updating timestamp");
+    if let Some(entity) = get_user_from_token(db.clone(), auth_token).await {
+      db.collection::<UserEntity>("users").update_one(doc! { "_id": entity.id.unwrap() }, doc! { "$set": { "last_access": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis() )}}, None).await.expect("Error updating timestamp");
       request = request.data(entity);
     }
   }
@@ -89,10 +108,8 @@ pub async fn graphql_query(schema: web::Data<GraphqlSchema>, db: web::Data<Datab
     if query.contains_key("authorization") {
       let auth_token = query.get("authorization").unwrap();
       let db = db.into_inner();
-      let options = FindOneOptions::builder().projection(doc! { "password_hash": 0 }).build();
-      let user_collection = db.collection::<UserEntity>("users");
-      if let Ok(Some(entity)) = user_collection.find_one(doc! { "access_token.token": auth_token, "access_token.expire": { "$gte": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis()) } }, options).await {
-        user_collection.update_one(doc! { "_id": entity.id.unwrap() }, doc! { "$set": { "last_access": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis() )}}, None).await.expect("Error updating timestamp");
+      if let Some(entity) = get_user_from_token(db.clone(), auth_token.clone()).await {
+        db.collection::<UserEntity>("users").update_one(doc! { "_id": entity.id.unwrap() }, doc! { "$set": { "last_access": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis() )}}, None).await.expect("Error updating timestamp");
         request = request.data(entity);
       }
     }

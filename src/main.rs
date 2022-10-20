@@ -13,6 +13,8 @@ use sysinfo::{RefreshKind, SystemExt};
 use crate::graphql::build_schema;
 use routes::{health::*, gql::*};
 use crate::graphql::roles::Role;
+use crate::models::model::ModelFor;
+use crate::models::user::UserEntity;
 
 
 #[actix_web::main]
@@ -27,6 +29,9 @@ async fn main() -> std::io::Result<()> {
     Arc::new(Mutex::new(sysinfo::System::new_with_specifics(RefreshKind::new().with_cpu().with_memory())))
   );
 
+/*  let user_model = ModelFor::<UserEntity>::new(Arc::new(mongo_database), "users".to_owned());
+
+*/
   let schema = build_schema().await;
 
 

@@ -6,6 +6,7 @@ pub mod guards;
 pub mod roles;
 
 use std::convert::From;
+use std::sync::Arc;
 
 use std::time::Duration;
 use async_graphql::*;
@@ -20,11 +21,12 @@ use mongodb::bson::oid::ObjectId;
 use crate::graphql::admin::AdminMutations;
 use crate::graphql::channel::{ChannelMutations, ChannelQueries, ChannelSubscriptions};
 use crate::graphql::links::{LinkMutations, LinkQueries, LinkSubscriptions};
-use crate::graphql::user::UserMutations;
+use crate::graphql::user::{UserMutations, UserQueries};
 use crate::models::user::UserEntity;
 
 use guards::RoleGuard;
 use roles::Role;
+use crate::ModelFor;
 
 pub trait FromOid {
   fn from_object_id(_: ObjectId) -> Self;
@@ -46,7 +48,7 @@ pub struct MutationRoot;
 pub struct SubscriptionRoot;
 
 #[derive(MergedObject, Default)]
-pub struct Queries(QueryRoot, LinkQueries, ChannelQueries);
+pub struct Queries(QueryRoot, LinkQueries, UserQueries, ChannelQueries);
 
 #[derive(MergedObject, Default)]
 pub struct Mutations(MutationRoot, AdminMutations, LinkMutations, ChannelMutations, UserMutations);
@@ -118,10 +120,13 @@ pub async fn build_schema() -> GraphqlSchema {
 
   let user_collection = mongo_database.collection::<UserEntity>("users");
 
+
+
   Schema::build(Queries::default(), Mutations::default(), Subscriptions::default())
-    .data(mongo_database)
+    .data(mongo_database.clone())
     .data(user_collection)
     .data(redis_client)
+    .data(ModelFor::<UserEntity>::new(Arc::new(mongo_database),"users".to_string()))
     .data(PubSub { publish_client, subscribe_client })
     .finish()
 }

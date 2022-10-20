@@ -7,6 +7,7 @@ use mongodb::Database;
 use uuid::Uuid;
 use crate::graphql::user::inputs::{CreateAccessToken, CreateUserInput};
 use crate::graphql::user::objects::{AccessToken, User};
+use crate::ModelFor;
 use crate::models::user::{AccessTokenEntity, UserEntity};
 use crate::password::verify_password;
 
@@ -21,6 +22,17 @@ pub struct UserMutations;
 
 #[derive(Default)]
 pub struct UserSubscriptions;
+
+#[Object]
+impl UserQueries {
+  pub async fn get_user(&self, ctx: &Context<'_>, name: String) -> Result<User> {
+    let users = ctx.data::<ModelFor<UserEntity>>().unwrap();
+    if let Ok(Some(entity)) = users.find_one(doc! { "name": name }, None).await {
+      return Ok(User::from(entity));
+    }
+    Err(Error::from("User not found."))
+  }
+}
 
 #[Object]
 impl UserMutations {

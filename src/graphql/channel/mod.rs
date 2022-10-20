@@ -12,11 +12,11 @@ use mongodb::Database;
 use crate::graphql::channel::inputs::{CreateChannelInput, SendChannelMessageInput};
 use crate::graphql::channel::objects::{Channel, ChannelMessage};
 use crate::models::channel::ChannelEntity;
-use crate::graphql::guards::{AuthGuard};
-use crate::graphql::PubSub;
+use crate::graphql::guards::{AuthGuard, RoleGuard};
+use crate::graphql::{PubSub, roles};
 use crate::graphql::user::objects::User;
 use crate::models::user::UserEntity;
-
+use roles::Role;
 pub mod inputs;
 pub mod objects;
 
@@ -58,6 +58,17 @@ impl ChannelMutations {
     match db.collection::<ChannelEntity>("channel")
       .insert_one(&entity, None).await {
       Ok(_) => Ok(Channel::from(entity)),
+      Err(_) => Err(Error::new("Cannot write to database"))
+    }
+  }
+
+  #[graphql(guard = "RoleGuard::new(Role::Admin)")]
+  pub async fn remove_channel(&self, _ctx: &Context<'_>, channel: String) -> Result<bool> {
+    let db = _ctx.data::<Database>().unwrap();
+
+    match db.collection::<ChannelEntity>("channel")
+      .delete_one(doc! { "_id": ObjectId::from_str(channel.as_str()).unwrap() }, None).await {
+      Ok(_) => Ok(true),
       Err(_) => Err(Error::new("Cannot write to database"))
     }
   }
