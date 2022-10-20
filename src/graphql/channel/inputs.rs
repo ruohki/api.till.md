@@ -9,3 +9,12 @@ pub struct CreateChannelInput {
   pub description: String,
   pub public: bool,
 }
+
+#[derive(InputObject)]
+pub struct SendChannelMessageInput {
+  #[graphql(validator(min_length = 4, max_length = 64))]
+  pub message: String,
+
+  pub channel: ID,
+}
+

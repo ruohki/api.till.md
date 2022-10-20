@@ -1,8 +1,9 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::Utc;
+use mongodb::bson::DateTime;
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelEntity {
   #[serde(rename = "_id")]
   pub id: Option<ObjectId>,
@@ -11,9 +12,9 @@ pub struct ChannelEntity {
   pub description: String,
   pub public: bool,
 
-  pub when_created: u64,
-  pub last_publish: u64,
-  pub last_subscribe: u64,
+  pub when_created: DateTime,
+  pub last_publish: DateTime,
+  pub last_subscribe: DateTime,
 }
 
 impl ChannelEntity {
@@ -23,9 +24,9 @@ impl ChannelEntity {
       name,
       description,
       public,
-      when_created: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-      last_publish: 0,
-      last_subscribe: 0,
+      when_created: DateTime::from_millis(Utc::now().timestamp_millis()),
+      last_publish: DateTime::from_millis(Utc::now().timestamp_millis()),
+      last_subscribe: DateTime::from_millis(Utc::now().timestamp_millis()),
     }
   }
 }

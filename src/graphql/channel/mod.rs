@@ -1,8 +1,21 @@
-use async_graphql::{Object, Context, Result, Error};
+use std::str::FromStr;
+use async_graphql::{Object, Context, Result, Error, ID, Subscription};
+use async_graphql::async_stream::stream;
+use async_graphql::futures_util::Stream;
+use chrono::Utc;
+use fred::interfaces::PubsubInterface;
+use fred::prelude::RedisValue;
+
+use futures::stream::{StreamExt, TryStreamExt};
+use mongodb::bson::{doc, oid::ObjectId};
 use mongodb::Database;
-use crate::graphql::channel::inputs::CreateChannelInput;
-use crate::graphql::channel::objects::Channel;
+use crate::graphql::channel::inputs::{CreateChannelInput, SendChannelMessageInput};
+use crate::graphql::channel::objects::{Channel, ChannelMessage};
 use crate::models::channel::ChannelEntity;
+use crate::graphql::guards::{AuthGuard};
+use crate::graphql::PubSub;
+use crate::graphql::user::objects::User;
+use crate::models::user::UserEntity;
 
 pub mod inputs;
 pub mod objects;
@@ -17,7 +30,26 @@ pub struct ChannelMutations;
 pub struct ChannelSubscriptions;
 
 #[Object]
+impl ChannelQueries {
+  #[graphql(guard = "AuthGuard")]
+  pub async fn list_channel(&self, ctx: &Context<'_>) -> Result<Vec<Channel>> {
+    let db = ctx.data::<Database>().unwrap();
+    let channel_collection = db.collection::<ChannelEntity>("channel");
+
+    let filter = doc! { "public": true };
+
+    if let Ok(cursor) = channel_collection.find(filter, None).await {
+      let documents: Vec<_> = cursor.try_collect().await?;
+      return Ok(documents.into_iter().map(|c| Channel::from(c)).collect::<Vec<Channel>>());
+    }
+
+    Ok(vec![])
+  }
+}
+
+#[Object]
 impl ChannelMutations {
+  #[graphql(guard = "AuthGuard")]
   pub async fn create_channel(&self, _ctx: &Context<'_>, channel: CreateChannelInput) -> Result<Channel> {
     let entity = ChannelEntity::new(channel.name, channel.description, channel.public);
 
@@ -29,10 +61,47 @@ impl ChannelMutations {
       Err(_) => Err(Error::new("Cannot write to database"))
     }
   }
+
+  #[graphql(guard = "AuthGuard")]
+  pub async fn send_message_to_channel(&self, _ctx: &Context<'_>, message: SendChannelMessageInput) -> Result<ChannelMessage> {
+    let db = _ctx.data::<Database>().unwrap();
+    let pubsub = _ctx.data::<PubSub>().unwrap();
+    let user = _ctx.data::<UserEntity>().unwrap();
+
+
+    if let Ok(Some(channel)) = db.collection::<ChannelEntity>("channel")
+      .find_one(doc! { "_id": ObjectId::from_str(message.channel.as_str()).unwrap() }, None).await {
+      let message = ChannelMessage {
+        id: ID::from(ObjectId::new().to_hex()),
+        message: message.message,
+        send_to: Channel::from(channel.clone()),
+        send_from: User::from(user.clone()),
+        send_when: Utc::now().timestamp_millis()
+      };
+
+      let msg = serde_json::to_string::<ChannelMessage>(&message).unwrap();
+      let _ = pubsub.publish_client.publish::<String, _, String>(channel.id.unwrap().to_hex(), msg).await;
+      return Ok(message);
+    }
+
+    Err(Error::new("Error sending message"))
+  }
 }
 
-/*#[Subscription]
+#[Subscription]
 impl ChannelSubscriptions {
-  pub async fn listen_channel(&self, _ctx: &Context<'_>) -> impl Stream<Item=i32> {}
+  #[graphql(guard = "AuthGuard")]
+  pub async fn listen_channel(&self, ctx: &Context<'_>, channel: ID) -> impl Stream<Item = ChannelMessage> {
+    let pubsub = ctx.data::<PubSub>().unwrap();
+    pubsub.subscribe_client.subscribe(channel.as_str()).await.unwrap();
+    let mut message_stream = pubsub.subscribe_client.on_message();
+    stream! {
+      while let Some((_channel, message)) = message_stream.next().await {
+        if let RedisValue::String(str) = message {
+          let message = serde_json::from_str::<ChannelMessage>(&str).unwrap();
+          yield message;
+        }
+      }
+    }
+  }
 }
-*/

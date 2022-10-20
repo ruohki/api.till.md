@@ -40,10 +40,21 @@ pub async fn graphql_playground() -> Result<HttpResponse> {
 
 pub async fn graphql_subscription(
   schema: web::Data<GraphqlSchema>,
-  req: HttpRequest,
+  db: web::Data<Database>, req: HttpRequest, gql_request: GraphQLRequest
   payload: web::Payload,
 ) -> Result<HttpResponse> {
-  GraphQLSubscription::new(Schema::clone(&*schema)).start(&req, payload)
+  let mut request = gql_request.into_inner();
+  if let Some(auth_token) = get_auth_from_headers(req.headers()) {
+    //TODO: Make the user beeing cached in redis
+    let db = db.into_inner();
+    let options = FindOneOptions::builder().projection(doc! { "password_hash": 0 }).build();
+    let user_collection = db.collection::<UserEntity>("users");
+    if let Ok(Some(entity)) = user_collection.find_one(doc! { "access_token.token": auth_token, "access_token.expire": { "$gte": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis()) } }, options).await {
+      user_collection.update_one(doc! { "_id": entity.id.unwrap() }, doc! { "$set": { "last_access": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis() )}}, None).await.expect("Error updating timestamp");
+      request = request.data(entity);
+    }
+  }
+  GraphQLSubscription::new(Schema::clone(&*schema)).start(request, payload)
 }
 
 fn get_auth_from_headers(headers: &HeaderMap) -> Option<String> {

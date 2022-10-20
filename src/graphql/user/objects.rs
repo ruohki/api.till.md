@@ -1,4 +1,5 @@
 use async_graphql::{ID, SimpleObject};
+use serde::{Deserialize, Serialize};
 use crate::graphql::FromOid;
 use crate::models::user::{AccessTokenEntity, UserEntity};
 
@@ -17,7 +18,7 @@ impl From<AccessTokenEntity> for AccessToken {
   }
 }
 
-#[derive(SimpleObject)]
+#[derive(SimpleObject, Clone, Serialize, Deserialize)]
 pub struct User {
   pub id: ID,
   pub name: String,

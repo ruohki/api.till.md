@@ -18,7 +18,7 @@ use fred::interfaces::ClientLike;
 use fred::prelude::{ReconnectPolicy, RedisConfig};
 use mongodb::bson::oid::ObjectId;
 use crate::graphql::admin::AdminMutations;
-use crate::graphql::channel::ChannelMutations;
+use crate::graphql::channel::{ChannelMutations, ChannelQueries, ChannelSubscriptions};
 use crate::graphql::links::{LinkMutations, LinkQueries, LinkSubscriptions};
 use crate::graphql::user::UserMutations;
 use crate::models::user::UserEntity;
@@ -46,13 +46,13 @@ pub struct MutationRoot;
 pub struct SubscriptionRoot;
 
 #[derive(MergedObject, Default)]
-pub struct Queries(QueryRoot, LinkQueries);
+pub struct Queries(QueryRoot, LinkQueries, ChannelQueries);
 
 #[derive(MergedObject, Default)]
 pub struct Mutations(MutationRoot, AdminMutations, LinkMutations, ChannelMutations, UserMutations);
 
 #[derive(MergedSubscription, Default)]
-pub struct Subscriptions(SubscriptionRoot, LinkSubscriptions);
+pub struct Subscriptions(SubscriptionRoot, LinkSubscriptions, ChannelSubscriptions);
 
 pub type GraphqlSchema = Schema<Queries, Mutations, Subscriptions>;
 
