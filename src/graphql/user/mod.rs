@@ -71,8 +71,11 @@ impl UserMutations {
       if let Some(user) = result {
         if let Ok(_) = verify_password(user.password_hash, args.password) {
           let token = base64::encode(Uuid::new_v4().to_string());
-          let millis = Utc::now() + Duration::hours(1);
-          let expire = DateTime::from_millis(millis.timestamp_millis());
+          let millis = Utc::now() + Duration::minutes(args.expire);
+          let expire = match args.expire {
+            0 => DateTime::parse_rfc3339_str("9999-12-31T23:59:59.00Z").unwrap(),
+            _ => DateTime::from_millis(millis.timestamp_millis())
+          };
 
           if let Ok(result) = users.update_one(filter, doc! { "$push": {  "access_token": { "token": token.clone(), "expire": expire.clone() }}}, None).await {
             let token = AccessToken::from(AccessTokenEntity::new(token, expire));
