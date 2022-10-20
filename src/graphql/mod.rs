@@ -22,6 +22,7 @@ use mongodb::Client;
 use std::time::Duration;
 
 use crate::ModelFor;
+use crate::models::channel::ChannelEntity;
 
 pub trait FromOid {
   fn from_object_id(_: ObjectId) -> Self;
@@ -112,7 +113,7 @@ pub async fn build_schema() -> GraphqlSchema {
       Arc::new(mongo_database.clone()),
       "users",
     ))
-    .data(ModelFor::<UserEntity>::new(
+    .data(ModelFor::<ChannelEntity>::new(
       Arc::new(mongo_database.clone()),
       "channel",
     ))
