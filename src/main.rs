@@ -18,6 +18,10 @@ use sysinfo::{RefreshKind, SystemExt};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8000".to_owned()).parse::<i32>().unwrap();
+    let bind = std::env::var("BIND").unwrap_or_else(|_| "0.0.0.0".to_owned());
+
     let options = ClientOptions::parse_with_resolver_config(
         "mongodb://localhost:27017/rust",
         ResolverConfig::cloudflare(),
@@ -37,7 +41,7 @@ async fn main() -> std::io::Result<()> {
     */
     let schema = build_schema().await;
 
-    println!("Playground IDE: http://localhost:8000");
+    println!("{}", format!("Playground IDE: http://localhost:{}", port));
 
     HttpServer::new(move || {
         App::new()
@@ -58,7 +62,7 @@ async fn main() -> std::io::Result<()> {
             .service(graphql_playground)
             .service(health)
     })
-    .bind("0.0.0.0:8000")?
+    .bind(format!("{}:{}", bind,port))?
     .run()
     .await
 }
