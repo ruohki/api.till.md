@@ -23,6 +23,13 @@ use std::time::Duration;
 
 use crate::ModelFor;
 use crate::models::channel::ChannelEntity;
+use std::env::var;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref MONGO_URL: String = var("MONGO_URL").expect("MONGO_URL not set in environment");
+    static ref REDIS_URL: String = var("REDIS_URL").expect("REDIS_URL not set in environment");
+}
 
 pub trait FromOid {
   fn from_object_id(_: ObjectId) -> Self;
@@ -82,7 +89,7 @@ pub struct PubSub {
 pub async fn build_schema() -> GraphqlSchema {
   // MongoDB
   let options = ClientOptions::parse_with_resolver_config(
-    "mongodb://localhost:27017/rust",
+    MONGO_URL.clone(),
     ResolverConfig::cloudflare(),
   )
     .await
@@ -90,8 +97,7 @@ pub async fn build_schema() -> GraphqlSchema {
   let mongo_client = Client::with_options(options).unwrap();
   let mongo_database = mongo_client.default_database().unwrap();
 
-  let redis_conn_url = "redis://localhost:6379";
-  let redis_client = redis::Client::open(redis_conn_url).expect("Invalid connection URL");
+  let redis_client = redis::Client::open(REDIS_URL.clone().as_str()).expect("Invalid connection URL");
 
   let config = RedisConfig::default();
   let policy = ReconnectPolicy::default();

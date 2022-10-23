@@ -15,6 +15,12 @@ use mongodb::Client;
 use routes::{gql::*, health::*};
 use std::sync::{Arc, Mutex};
 use sysinfo::{RefreshKind, SystemExt};
+use std::env::var;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref MONGO_URL: String = var("MONGO_URL").expect("MONGO_URL not set in environment");
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -23,7 +29,7 @@ async fn main() -> std::io::Result<()> {
     let bind = std::env::var("BIND").unwrap_or_else(|_| "0.0.0.0".to_owned());
 
     let options = ClientOptions::parse_with_resolver_config(
-        "mongodb://localhost:27017/rust",
+        MONGO_URL.clone(),
         ResolverConfig::cloudflare(),
     )
     .await
@@ -36,9 +42,6 @@ async fn main() -> std::io::Result<()> {
         RefreshKind::new().with_cpu().with_memory(),
     ))));
 
-    /*  let user_model = ModelFor::<UserEntity>::new(Arc::new(mongo_database), "users".to_owned());
-
-    */
     let schema = build_schema().await;
 
     println!("{}", format!("Playground IDE: http://localhost:{}", port));

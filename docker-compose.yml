@@ -1,0 +1,35 @@
+version: '3.4'
+
+services:
+  application:
+    ports:
+      - "8000:8000"
+    build: ./
+    depends_on:
+      - mongo
+      - redis
+    environment:
+      - "MONGO_URL=mongodb://mongo:27017/app"
+      - "REDIS_URL=redis://cache:6379/"
+    networks:
+      - api
+
+  redis:
+    hostname: cache
+    image: redis
+    restart: always
+    networks:
+      - api
+  mongo:
+    hostname: mongo
+    image: mongo
+    restart: always
+    networks:
+      - api
+    volumes:
+      - mongo:/DATA
+networks:
+  api:
+
+volumes:
+  mongo:

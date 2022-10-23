@@ -15,7 +15,6 @@ use crate::models::channel::ChannelEntity;
 use crate::models::user::UserEntity;
 use futures::stream::{StreamExt, TryStreamExt};
 use mongodb::bson::{doc, oid::ObjectId};
-use mongodb::Database;
 use roles::Role;
 use crate::ModelFor;
 
@@ -35,8 +34,7 @@ pub struct ChannelSubscriptions;
 impl ChannelQueries {
   #[graphql(guard = "AuthGuard")]
   pub async fn list_channel(&self, ctx: &Context<'_>) -> Result<Vec<Channel>> {
-    let db = ctx.data::<Database>().unwrap();
-    let channel_collection = db.collection::<ChannelEntity>("channel");
+    let channel_collection = ctx.data::<ModelFor<ChannelEntity>>().unwrap();
 
     let filter = doc! { "public": true };
 
@@ -60,12 +58,11 @@ impl ChannelMutations {
     ctx: &Context<'_>,
     channel: CreateChannelInput,
   ) -> Result<Channel> {
+    let channel_collection = ctx.data::<ModelFor<ChannelEntity>>().unwrap();
     let entity = ChannelEntity::new(channel.name, channel.description, channel.public);
 
-    let db = ctx.data::<Database>().unwrap();
 
-    match db
-      .collection::<ChannelEntity>("channel")
+    match channel_collection
       .insert_one(&entity, None)
       .await
     {
@@ -75,11 +72,10 @@ impl ChannelMutations {
   }
 
   #[graphql(guard = "RoleGuard::new(Role::Admin)")]
-  pub async fn remove_channel(&self, _ctx: &Context<'_>, channel: String) -> Result<bool> {
-    let db = _ctx.data::<Database>().unwrap();
+  pub async fn remove_channel(&self, ctx: &Context<'_>, channel: String) -> Result<bool> {
+    let channel_collection = ctx.data::<ModelFor<ChannelEntity>>().unwrap();
 
-    match db
-      .collection::<ChannelEntity>("channel")
+    match channel_collection
       .delete_one(
         doc! { "_id": ObjectId::from_str(channel.as_str()).unwrap() },
         None,
@@ -95,13 +91,13 @@ impl ChannelMutations {
   pub async fn send_message_to_channel(
     &self,
     ctx: &Context<'_>,
-    message: SendChannelMessageInput,
+    args: SendChannelMessageInput,
   ) -> Result<ChannelMessage> {
     let user = ctx.data::<UserEntity>().unwrap();
     let pubsub = ctx.data::<PubSub>().unwrap();
     let channels = ctx.data::<ModelFor<ChannelEntity>>().unwrap();
 
-    let id = ObjectId::from_str(message.channel.as_str()).map_err(|_| Error::new("Invalid channel ID"))?;
+    let id = ObjectId::from_str(args.channel.as_str()).map_err(|_| Error::new("Invalid channel ID"))?;
 
     match channels.find_one(
       doc! { "_id": id },
@@ -110,7 +106,7 @@ impl ChannelMutations {
       Ok(Some(channel)) => {
         let message = ChannelMessage {
           id: ID::from(ObjectId::new().to_hex()),
-          message: message.message,
+          message: args.message,
           send_to: Channel::from(channel.clone()),
           send_from: User::from(user.clone()),
           send_when: Utc::now().timestamp_millis(),
@@ -119,7 +115,7 @@ impl ChannelMutations {
         let msg = serde_json::to_string::<ChannelMessage>(&message).unwrap();
         let _ = pubsub
           .publish_client
-          .publish::<String, _, String>(channel.id.unwrap().to_hex(), msg)
+          .publish::<String, _, String>(args.channel.as_str(), msg)
           .await;
         Ok(message)
       }
@@ -142,7 +138,7 @@ impl ChannelSubscriptions {
       .subscribe_client
       .subscribe(channel.as_str())
       .await
-      .unwrap();
+        .expect("Error subscribing to channel");
     let mut message_stream = pubsub.subscribe_client.on_message();
     stream! {
       while let Some((_channel, message)) = message_stream.next().await {
