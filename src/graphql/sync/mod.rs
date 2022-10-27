@@ -1,4 +1,3 @@
-use async_graphql::async_stream::stream;
 use async_graphql::futures_util::Stream;
 use async_graphql::{Context, Error, Object, Result, Subscription, ID};
 use chrono::Utc;
@@ -22,16 +21,16 @@ pub mod inputs;
 pub mod objects;
 
 #[derive(Default)]
-pub struct ChannelQueries;
+pub struct SyncQueries;
 
 #[derive(Default)]
-pub struct ChannelMutations;
+pub struct SyncMutations;
 
 #[derive(Default)]
-pub struct ChannelSubscriptions;
+pub struct SyncSubscriptions;
 
-#[Object]
-impl ChannelQueries {
+/*#[Object]
+impl SyncQueries {
   #[graphql(guard = "AuthGuard")]
   pub async fn list_channel(&self, ctx: &Context<'_>) -> Result<Vec<Channel>> {
     let channel_collection = ctx.data::<ModelFor<ChannelEntity>>().unwrap();
@@ -51,7 +50,15 @@ impl ChannelQueries {
 }
 
 #[Object]
-impl ChannelMutations {
+impl SyncMutations {
+  #[graphql(guard = "AuthGuard")]
+  pub async fn rename_file(
+    &self,
+    ctx: &Context<'_>,
+  ) {
+
+  }
+
   #[graphql(guard = "AuthGuard")]
   pub async fn create_channel(
     &self,
@@ -123,10 +130,10 @@ impl ChannelMutations {
       _ => Err(Error::new("Unknown channel ID"))
     }
   }
-}
+}*/
 
 #[Subscription]
-impl ChannelSubscriptions {
+impl SyncSubscriptions {
   #[graphql(guard = "AuthGuard")]
   pub async fn listen_channel(
     &self,
@@ -138,7 +145,7 @@ impl ChannelSubscriptions {
       .subscribe
       .subscribe(channel.as_str())
       .await
-        .expect("Error subscribing to channel");
+      .expect("Error subscribing to channel");
     let mut message_stream = pubsub.subscribe.on_message();
     stream! {
       while let Some((_channel, message)) = message_stream.next().await {

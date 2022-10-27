@@ -37,8 +37,8 @@ async fn get_user_from_token(db: Arc<Database>, auth_token: String) -> Option<Us
         .projection(doc! { "password_hash": 0 })
         .build();
     if let Ok(Some(entity)) = user_collection.find_one(doc! { "access_token.token": auth_token, "access_token.expire": { "$gte": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis()) } }, options).await {
-    return Some(entity);
-  }
+        return Some(entity);
+    }
     None
 }
 
@@ -53,23 +53,23 @@ pub async fn graphql_playground() -> Result<HttpResponse> {
 
 pub async fn on_connection_init(
     value: serde_json::Value,
-    db: Arc<Database>,
+    db: Arc<Database>
 ) -> async_graphql::Result<Data> {
     #[derive(Debug, Deserialize)]
     struct Payload {
         authorization: String,
     }
+    let mut data = Data::default();
 
     if let Ok(payload) = serde_json::from_value::<Payload>(value) {
         if let Some(user) = get_user_from_token(db.clone(), payload.authorization).await {
             db.collection::<UserEntity>("users").update_one(doc! { "_id": user.id.unwrap() }, doc! { "$set": { "last_access": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis() )}}, None).await.expect("Error updating timestamp");
-            let mut data = Data::default();
             data.insert(user);
             return Ok(data);
         }
     }
 
-    Ok(Data::default())
+    Ok(data)
 }
 
 pub async fn graphql_subscription(
@@ -78,7 +78,8 @@ pub async fn graphql_subscription(
     payload: web::Payload,
     db: web::Data<Database>,
 ) -> Result<HttpResponse> {
-    let db = db.into_inner();
+    let db = db.into_inner().clone();
+
     GraphQLSubscription::new(Schema::clone(&*schema))
         .on_connection_init(|value| on_connection_init(value, db))
         .start(&req, payload)
@@ -98,8 +99,9 @@ pub async fn graphql_request(
     gql_request: GraphQLRequest,
 ) -> GraphQLResponse {
     let mut request = gql_request.into_inner();
+
     if let Some(auth_token) = get_auth_from_headers(req.headers()) {
-        //TODO: Make the user beeing cached in redis
+        //TODO: Make the user being cached in redis
         let db = db.into_inner();
         if let Some(entity) = get_user_from_token(db.clone(), auth_token).await {
             db.collection::<UserEntity>("users").update_one(doc! { "_id": entity.id.unwrap() }, doc! { "$set": { "last_access": mongodb::bson::DateTime::from_millis(Utc::now().timestamp_millis() )}}, None).await.expect("Error updating timestamp");
