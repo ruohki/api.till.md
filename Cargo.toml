@@ -21,6 +21,7 @@ fred = "5.2.0"
 # Graphql
 async-graphql = { version = "4.0.15", features = ["default"] }
 async-graphql-actix-web = { version = "4.0.15", features = ["default"] }
+graphql-int64-scalar = { version = "0.3.4", features = ["async-graphql"] }
 
 # Async
 tokio = { version = "1.17.0", features = ["full"]}

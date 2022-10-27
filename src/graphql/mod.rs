@@ -3,13 +3,14 @@ pub mod channel;
 pub mod guards;
 pub mod roles;
 pub mod user;
+pub mod sync;
 
 use std::convert::From;
 
 use crate::graphql::admin::AdminMutations;
 use crate::graphql::channel::{ChannelMutations, ChannelQueries, ChannelSubscriptions};
 use crate::graphql::user::{UserMutations, UserQueries};
-
+use crate::graphql::sync::{SyncMutations, SyncSubscriptions};
 use async_graphql::*;
 
 use futures_util::stream::Stream;
@@ -59,10 +60,11 @@ pub struct Mutations(
   AdminMutations,
   ChannelMutations,
   UserMutations,
+  SyncMutations
 );
 
 #[derive(MergedSubscription, Default)]
-pub struct Subscriptions(SubscriptionRoot, ChannelSubscriptions);
+pub struct Subscriptions(SubscriptionRoot, ChannelSubscriptions, SyncSubscriptions);
 
 pub type GraphqlSchema = Schema<Queries, Mutations, Subscriptions>;
 

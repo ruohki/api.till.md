@@ -1,9 +1,11 @@
+use async_graphql::async_stream::stream;
 use async_graphql::futures_util::Stream;
 use async_graphql::{Context, Error, Object, Result, Subscription, ID};
 use chrono::Utc;
 use fred::interfaces::PubsubInterface;
 use fred::prelude::RedisValue;
 use std::str::FromStr;
+use async_graphql::parser::types::OperationType;
 
 use crate::graphql::channel::inputs::{CreateChannelInput, SendChannelMessageInput};
 use crate::graphql::channel::objects::{Channel, ChannelMessage};
@@ -15,6 +17,10 @@ use crate::models::user::UserEntity;
 use futures::stream::{StreamExt, TryStreamExt};
 use mongodb::bson::{doc, oid::ObjectId};
 use roles::Role;
+use crate::graphql::sync::inputs::{CreateArgs, ObjectType};
+use crate::graphql::sync::inputs::ObjectType::File;
+use crate::graphql::sync::objects::{CreateMessage, FileOperation, Operation, PathOperation, Stat, SyncEvent};
+use crate::graphql::sync::objects::SyncEvent::Create;
 use crate::ModelFor;
 
 pub mod inputs;
@@ -28,6 +34,48 @@ pub struct SyncMutations;
 
 #[derive(Default)]
 pub struct SyncSubscriptions;
+
+#[Object]
+impl SyncMutations {
+  #[graphql(guard = "AuthGuard")]
+  pub async fn create_file_or_folder(&self, ctx: &Context<'_>, vault_id: String, args: CreateArgs) -> Result<SyncEvent> {
+    let user = ctx.data::<UserEntity>().unwrap();
+    let pubsub = ctx.data::<PubSub>().unwrap();
+
+    let message = Create(CreateMessage {
+      operation_type: args.object_type.clone(),
+      operation: match args.object_type.clone()  {
+        File => Operation::File(FileOperation {
+          name: args.name.clone(),
+          extension: args.extension.clone().unwrap(),
+          path: args.path.clone(),
+          basename: format!("{}.{}", args.name.clone(), args.extension.clone().unwrap()),
+          stat: match args.stat {
+            Some(stat) => Some(Stat::from_args(stat)),
+            None => None
+          }
+        }),
+        ObjectType::Folder => Operation::Path(PathOperation {
+          name: args.name.clone(),
+          path: args.path.clone(),
+          basename: args.name,
+          stat: match args.stat {
+            Some(stat) => Some(Stat::from_args(stat)),
+            None => None
+          }
+        })
+      }
+    });
+
+    let msg = serde_json::to_string::<SyncEvent>(&message).unwrap();
+    let _ = pubsub
+      .publish
+      .publish::<String, _, String>(vault_id.as_str(), msg)
+      .await;
+    Ok(message)
+
+  }
+}
 
 /*#[Object]
 impl SyncQueries {
@@ -135,23 +183,24 @@ impl SyncMutations {
 #[Subscription]
 impl SyncSubscriptions {
   #[graphql(guard = "AuthGuard")]
-  pub async fn listen_channel(
+  pub async fn listen_sync_events(
     &self,
     ctx: &Context<'_>,
-    channel: ID,
-  ) -> impl Stream<Item=ChannelMessage> {
+    vault_id: ID,
+  ) -> impl Stream<Item=SyncEvent> {
+
     let pubsub = ctx.data::<PubSub>().unwrap();
     pubsub
       .subscribe
-      .subscribe(channel.as_str())
+      .subscribe(vault_id.as_str())
       .await
-      .expect("Error subscribing to channel");
+      .expect("Error subscribing to vault events");
     let mut message_stream = pubsub.subscribe.on_message();
     stream! {
       while let Some((_channel, message)) = message_stream.next().await {
         if let RedisValue::String(str) = message {
-          let message = serde_json::from_str::<ChannelMessage>(&str).unwrap();
-          yield message;
+          let event = serde_json::from_str::<SyncEvent>(&str).unwrap();
+          yield event;
         }
       }
     }
