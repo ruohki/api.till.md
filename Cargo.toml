@@ -27,6 +27,7 @@ redis = { git = "https://github.com/rharish101/redis-rs.git", branch = "rustls",
 # Graphql
 async-graphql = { version = "4.0.15", features = ["default"] }
 async-graphql-actix-web = { version = "4.0.15", features = ["default"] }
+graphql-int64-scalar = { version = "0.3.4", features = ["async-graphql"] }
 
 # Async
 tokio = { version = "1.17.0", features = ["full"]}

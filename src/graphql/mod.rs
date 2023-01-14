@@ -3,28 +3,29 @@ pub mod channel;
 pub mod guards;
 pub mod roles;
 pub mod user;
+pub mod sync;
 
 use std::convert::From;
-use std::sync::Arc;
 
 use crate::graphql::admin::AdminMutations;
 use crate::graphql::channel::{ChannelMutations, ChannelQueries, ChannelSubscriptions};
 use crate::graphql::user::{UserMutations, UserQueries};
-use crate::models::user::UserEntity;
+use crate::graphql::sync::{SyncMutations, SyncSubscriptions};
 use async_graphql::*;
-use fred::clients::RedisClient;
-use fred::interfaces::ClientLike;
-use fred::prelude::{ReconnectPolicy, RedisConfig};
+
 use futures_util::stream::Stream;
 use mongodb::bson::oid::ObjectId;
-use mongodb::options::{ClientOptions, ResolverConfig};
-use mongodb::Client;
+
+use mongodb::{Database};
 use std::time::Duration;
 
+use std::env::var;
+use std::sync::Arc;
+use lazy_static::lazy_static;
+use crate::connections::PubSub;
 use crate::ModelFor;
 use crate::models::channel::ChannelEntity;
-use std::env::var;
-use lazy_static::lazy_static;
+use crate::models::user::UserEntity;
 
 lazy_static! {
     static ref MONGO_URL: String = var("MONGO_URL").expect("MONGO_URL not set in environment");
@@ -59,10 +60,11 @@ pub struct Mutations(
   AdminMutations,
   ChannelMutations,
   UserMutations,
+  SyncMutations
 );
 
 #[derive(MergedSubscription, Default)]
-pub struct Subscriptions(SubscriptionRoot, ChannelSubscriptions);
+pub struct Subscriptions(SubscriptionRoot, ChannelSubscriptions, SyncSubscriptions);
 
 pub type GraphqlSchema = Schema<Queries, Mutations, Subscriptions>;
 
@@ -80,52 +82,21 @@ impl SubscriptionRoot {
   }
 }
 
-
-pub struct PubSub {
-  pub publish_client: RedisClient,
-  pub subscribe_client: RedisClient,
-}
-
-pub async fn build_schema() -> GraphqlSchema {
-  // MongoDB
-  let options = ClientOptions::parse_with_resolver_config(
-    MONGO_URL.clone(),
-    ResolverConfig::cloudflare(),
-  )
-    .await
-    .unwrap();
-  let mongo_client = Client::with_options(options).unwrap();
-  let mongo_database = mongo_client.default_database().unwrap();
-
-  let redis_client = redis::Client::open(REDIS_URL.clone().as_str()).expect("Invalid connection URL");
-
-  let config = RedisConfig::default();
-  let policy = ReconnectPolicy::default();
-  let publish_client = RedisClient::new(config.clone());
-  let _ = publish_client.connect(Some(policy.clone()));
-  let _ = publish_client.wait_for_connect().await;
-
-  let subscribe_client = RedisClient::new(config.clone());
-  let _ = subscribe_client.connect(Some(policy.clone()));
-  let _ = subscribe_client.wait_for_connect().await;
-
+pub async fn build_schema(db: Database, pubsub: PubSub) -> GraphqlSchema {
   Schema::build(
     Queries::default(),
     Mutations::default(),
     Subscriptions::default(),
   )
-    .data(redis_client)
-    .data(ModelFor::<UserEntity>::new(
-      Arc::new(mongo_database.clone()),
-      "users",
-    ))
-    .data(ModelFor::<ChannelEntity>::new(
-      Arc::new(mongo_database.clone()),
-      "channel",
-    ))
-    .data(PubSub {
-      publish_client,
-      subscribe_client,
-    })
-    .finish()
+  .data(pubsub)
+  // Model
+  .data(ModelFor::<UserEntity>::new(
+    Arc::new(db.clone()),
+    "users",
+  ))
+  .data(ModelFor::<ChannelEntity>::new(
+    Arc::new(db.clone()),
+    "channel",
+  ))
+  .finish()
 }
