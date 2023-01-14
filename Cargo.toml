@@ -5,6 +5,12 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.release]
+opt-level = 3
+lto = true
+
+
+
 [dependencies]
 # Logging
 log = "0.4.16"
@@ -15,8 +21,8 @@ actix-web = { version = "4.2.1", default-features = false, features = ["macros",
 
 # Database
 mongodb = "2.3.1"
-redis = "0.22.0"
-fred = "5.2.0"
+fred = { version = "5.2.0", features = ["vendored-tls"] }
+redis = { git = "https://github.com/rharish101/redis-rs.git", branch = "rustls", features = ["tls-rustls"] }
 
 # Graphql
 async-graphql = { version = "4.0.15", features = ["default"] }
